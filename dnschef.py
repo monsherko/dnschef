@@ -1,38 +1,14 @@
 #!/usr/bin/env python3
 
 #
-# DNSChef is a highly configurable DNS Proxy for Penetration Testers 
+# DNSChef is a highly configurable DNS Proxy for Penetration Testers
 # and Malware Analysts. Please visit http://thesprawl.org/projects/dnschef/
 # for the latest version and documentation. Please forward all issues and
 # concerns to iphelix [at] thesprawl.org.
 
 DNSCHEF_VERSION = "0.4"
 
-# Copyright (C) 2019 Peter Kacherginsky, Marcello Salvati
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met: 
-#
-# 1. Redistributions of source code must retain the above copyright notice, this
-#    list of conditions and the following disclaimer. 
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
-# 3. Neither the name of the copyright holder nor the names of its contributors
-#    may be used to endorse or promote products derived from this software without 
-#    specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
-# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 
 from argparse import ArgumentParser
 from configparser import ConfigParser
@@ -49,8 +25,25 @@ import socket
 import sys
 import os
 import binascii
+import json
 import string
 import base64
+from time import gmtime, strftime
+
+output_lock = threading.RLock()
+
+
+
+def _logger_(src_ip, qtype, qname, filepath="/var/log/dnschef.log"):
+    with output_lock:
+        try:
+            with open(filepath, 'a') as f:
+                dictmap = dict({'timestamp' : strftime("20%y-%m-%dT%H:%M:%S.000000Z", gmtime()), 'src_ip' :src_ip, 'qtype' :qtype , 'qname' : qname, 'protocol' : 'dns' })
+                res = json.dumps(dictmap)
+                f.write(res + '\n')
+        except:
+            pass
+
 
 
 class DNSChefFormatter(logging.Formatter):
@@ -81,8 +74,14 @@ log_ch.setLevel(logging.INFO)
 log_ch.setFormatter(DNSChefFormatter(datefmt="%H:%M:%S"))
 log.addHandler(log_ch)
 
+
+
 # DNSHandler Mixin. The class contains generic functions to parse DNS requests and
 # calculate an appropriate response based on user parameters.
+
+
+
+
 class DNSHandler():
 
     def parse(self, data):
@@ -265,7 +264,7 @@ class DNSHandler():
                 # Proxy the request
                 else:
                     log.info(f"{self.client_address[0]}: proxying the response of type '{qtype}' for {qname}")
-
+                    _logger_(self.client_address[0],qtype, qname)
                     nameserver_tuple = random.choice(self.server.nameservers).split('#')
                     response = self.proxyrequest(data, *nameserver_tuple)
 
@@ -371,7 +370,7 @@ class TCPHandler(DNSHandler, socketserver.BaseRequestHandler):
 
         if response:
             # Calculate and add the additional "length" parameter
-            # used in TCP DNS protocol 
+            # used in TCP DNS protocol
             length = binascii.unhexlify("%04x" % len(response))
             self.request.sendall(length + response)
 
